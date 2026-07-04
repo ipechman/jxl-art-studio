@@ -7,7 +7,13 @@ import { encodeTree, decodeJxl, toPng } from "./jxl-node.mjs";
 import { RECIPES } from "../src/recipes/index.ts";
 import { defaultsOf } from "../src/recipes/types.ts";
 import { PRESETS } from "../src/presets.ts";
-import { generateMix, mixablePresets, randomMix } from "../src/mixer.ts";
+import {
+  LAYER_DEFAULTS,
+  generateMix,
+  mixablePresets,
+  randomMixState,
+  sanitizeMixState,
+} from "../src/mixer.ts";
 
 const outDir = process.argv[2] ?? "renders";
 mkdirSync(outDir, { recursive: true });
@@ -49,7 +55,7 @@ for (const p of PRESETS) {
     p.mode === "code"
       ? p.code
       : p.mode === "mix"
-        ? generateMix(p.layers)
+        ? generateMix(sanitizeMixState({ layers: p.layers, rotate: p.rotate }))
         : RECIPES.find((r) => r.id === p.recipeId).generate(
             { ...defaultsOf(RECIPES.find((r) => r.id === p.recipeId)), ...p.values },
             p.strokes ?? [],
@@ -62,17 +68,42 @@ for (const base of mixablePresets("base")) {
   for (const over of mixablePresets("overlay")) {
     run(
       `mix-${base.id}--${over.id}`,
-      generateMix([
-        { presetId: base.id, blend: "add" },
-        { presetId: over.id, blend: "add" },
-      ]),
+      generateMix({
+        layers: [
+          { ...LAYER_DEFAULTS, presetId: base.id },
+          { ...LAYER_DEFAULTS, presetId: over.id },
+        ],
+        rotate: 0,
+      }),
     );
   }
 }
 
-console.log("=== mixes: randomized stacks (8) ===");
-for (let i = 0; i < 8; i++) {
-  run(`mix-random-${i}`, generateMix(randomMix()));
+console.log("=== mixes: every blend/geometry knob ===");
+const knobs = [
+  { name: "normal-60", blend: "normal", opacity: 60 },
+  { name: "mul-window", blend: "mul", w: 50, h: 50, x: 80, y: 20 },
+  { name: "add-30-window", blend: "add", opacity: 30, w: 40, h: 70, x: 0, y: 100 },
+  { name: "tiny-window", blend: "normal", opacity: 100, w: 10, h: 10, x: 100, y: 0 },
+];
+for (const k of knobs) {
+  for (const rotate of [0, 1, 2, 3]) {
+    run(
+      `mixknob-${k.name}-r${rotate}`,
+      generateMix({
+        layers: [
+          { ...LAYER_DEFAULTS, presetId: "golden-sunset" },
+          { ...LAYER_DEFAULTS, presetId: "amber-chaos", ...k },
+        ],
+        rotate,
+      }),
+    );
+  }
+}
+
+console.log("=== mixes: randomized stacks (24) ===");
+for (let i = 0; i < 24; i++) {
+  run(`mix-random-${i}`, generateMix(randomMixState()));
 }
 
 console.log(failures ? `\n${failures} FAILURES` : "\nall ok");

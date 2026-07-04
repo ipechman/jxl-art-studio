@@ -36,6 +36,12 @@ export interface LayerCtx {
   height: number;
   /** Multiply 8-bit sample constants by this (257 on the 16-bit mix canvas). */
   scale: number;
+  /**
+   * The visible window of this layer on the canvas. Position-aware recipes
+   * (gradient ramps, CA seeds) anchor their pattern here; the mixer masks
+   * everything outside it. Defaults to the full canvas.
+   */
+  region?: { x: number; y: number; w: number; h: number };
 }
 
 /** A recipe rendered as a mixable layer. */

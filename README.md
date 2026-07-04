@@ -31,10 +31,25 @@ the URL hash, same `zcode` scheme as the community editors).
 
 The **Mix** tab stacks starters on top of each other — sun + fractals, glitch
 under stripes, up to four layers. Each layer is a real JPEG XL frame
-(`NotLast`) blended with `kAdd` or `kMul` onto a shared 16-bit canvas; 8-bit
-recipes scale their constants ×257 to match. Two codec-level constraints
-apply: splines only render on the first frame (so sun/doodle presets are
-base-only), and the quilt's `GroupShift` is file-global (so it can't be mixed).
+(`NotLast`) composited by the codec itself on a shared 16-bit canvas (8-bit
+recipes scale their constants ×257 to match). Per layer you control:
+
+- **Blend**: ✨ Glow (`kAlphaWeightedAdd`), 🖼 Normal (`kBlend`), 🌑 Shade (`kMul`)
+- **Opacity**: a real alpha channel weights the layer (exact for Glow/Normal;
+  the codec's `kMul` ignores alpha, so Shade is always full strength)
+- **Move & scale**: each layer gets a rectangular window. The alpha channel
+  masks outside it (~10 bytes) and position-aware recipes re-anchor their
+  pattern to it, so fractals genuinely grow from wherever you put them.
+  (Positioned sub-frames via `FramePos` crash this libjxl build, so windows
+  are done in-tree.)
+- **Reorder**: move layers up and down the stack.
+
+Whole-artwork **rotation** (0/90/180/270°) uses the `Orientation` header —
+per-layer rotation doesn't exist in JPEG XL, since prediction runs in raster
+order. Other codec-level constraints: splines only render on the first frame
+(sun/doodle presets are base-only), the quilt's `GroupShift` is file-global
+(it can't be mixed), and windowed Shade is disabled for plasma (its unclamped
+`Weighted` predictor destabilizes at the window edge).
 
 The **Code** tab shows the real tree program behind every picture and lets you
 edit it live, with a cheat sheet of the syntax. That's the bridge from playing

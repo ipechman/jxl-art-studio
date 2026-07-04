@@ -12,11 +12,14 @@ import { initGallery } from "./gallery.ts";
 import { toast } from "./toast.ts";
 import { PRESETS, type MixLayer, type Preset } from "../presets.ts";
 import {
-  defaultMix,
+  LAYER_DEFAULTS,
+  defaultMixState,
   generateMix,
+  layerWindowable,
   mixablePresets,
-  randomMix,
-  sanitizeMix,
+  randomMixState,
+  sanitizeMixState,
+  type MixState,
 } from "../mixer.ts";
 import { buildHash, parseHash } from "../share.ts";
 
@@ -28,7 +31,7 @@ export class App {
   private recipe: Recipe = RECIPES[0];
   private values = new Map<string, ParamValues>();
   private strokes: Stroke[] = [];
-  private mixLayers: MixLayer[] = defaultMix();
+  private mix: MixState = defaultMixState();
   private code = "";
   private lastBytes: Uint8Array | null = null;
   private lastGoodCode = "";
@@ -64,13 +67,18 @@ export class App {
     window.addEventListener("resize", () => this.preview.setZoom("fit"));
 
     $("mix-add").addEventListener("click", () => {
-      if (this.mixLayers.length >= 4) return;
+      if (this.mix.layers.length >= 4) return;
       const overlays = mixablePresets("overlay");
-      this.mixLayers.push({
+      this.mix.layers.push({
+        ...LAYER_DEFAULTS,
         presetId: overlays[Math.floor(Math.random() * overlays.length)].id,
-        blend: "add",
       });
       this.enterMixMode();
+    });
+    ($("mix-rotate") as HTMLSelectElement).addEventListener("change", () => {
+      this.mix.rotate = Number(($("mix-rotate") as HTMLSelectElement).value);
+      this.regenerate();
+      this.refresh();
     });
 
     parseHash(location.hash).then((shared) => {
@@ -85,7 +93,7 @@ export class App {
         }
       }
       if (shared?.mode === "mix" && shared.layers) {
-        this.mixLayers = sanitizeMix(shared.layers);
+        this.mix = sanitizeMixState({ layers: shared.layers, rotate: shared.rotate });
         this.enterMixMode();
         return;
       }
@@ -113,7 +121,7 @@ export class App {
 
   private regenerate() {
     if (this.mode === "mix") {
-      this.code = generateMix(this.mixLayers);
+      this.code = generateMix(this.mix);
     } else {
       const strokes = this.pendingStroke
         ? [...this.strokes, this.pendingStroke]
@@ -175,7 +183,8 @@ export class App {
       recipeId: this.recipe.id,
       values: this.valuesFor(this.recipe),
       strokes: this.strokes,
-      layers: this.mixLayers,
+      layers: this.mix.layers,
+      rotate: this.mix.rotate,
     };
   }
 
@@ -265,10 +274,19 @@ export class App {
   private rebuildMixUI() {
     const container = $("mix-layers");
     container.innerHTML = "";
-    this.mixLayers.forEach((layer, i) => {
+    const layers = this.mix.layers;
+    const update = (rebuild = false) => {
+      if (rebuild) this.rebuildMixUI();
+      this.regenerate();
+      this.refresh();
+    };
+
+    layers.forEach((layer, i) => {
+      const card = document.createElement("div");
+      card.className = "mix-card";
+
       const row = document.createElement("div");
       row.className = "mix-row";
-
       const label = document.createElement("span");
       label.className = "mix-label";
       label.textContent = i === 0 ? "Base" : `Layer ${i + 1}`;
@@ -284,17 +302,55 @@ export class App {
       presetSel.value = layer.presetId;
       presetSel.addEventListener("change", () => {
         layer.presetId = presetSel.value;
-        this.regenerate();
-        this.refresh();
+        update();
       });
       row.appendChild(presetSel);
 
       if (i > 0) {
+        const btn = (text: string, title: string, onClick: () => void, enabled = true) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "button mix-btn";
+          b.textContent = text;
+          b.title = title;
+          b.disabled = !enabled;
+          b.addEventListener("click", onClick);
+          row.appendChild(b);
+        };
+        btn(
+          "↑",
+          "Move this layer down the stack",
+          () => {
+            [layers[i - 1], layers[i]] = [layers[i], layers[i - 1]];
+            update(true);
+          },
+          i > 1,
+        );
+        btn(
+          "↓",
+          "Move this layer up the stack",
+          () => {
+            [layers[i], layers[i + 1]] = [layers[i + 1], layers[i]];
+            update(true);
+          },
+          i < layers.length - 1,
+        );
+        btn("✕", "Remove this layer", () => {
+          layers.splice(i, 1);
+          update(true);
+        });
+      }
+      card.appendChild(row);
+
+      if (i > 0) {
+        const grid = document.createElement("div");
+        grid.className = "mix-grid";
+
         const blendSel = document.createElement("select");
-        blendSel.className = "mix-blend";
         for (const [value, text] of [
-          ["add", "✨ Glow (add)"],
-          ["mul", "🌑 Shade (multiply)"],
+          ["add", "✨ Glow"],
+          ["normal", "🖼 Normal"],
+          ["mul", "🌑 Shade"],
         ]) {
           const o = document.createElement("option");
           o.value = value;
@@ -304,25 +360,72 @@ export class App {
         blendSel.value = layer.blend;
         blendSel.addEventListener("change", () => {
           layer.blend = blendSel.value as MixLayer["blend"];
-          this.regenerate();
-          this.refresh();
+          update(true); // opacity slider visibility depends on blend
         });
-        row.appendChild(blendSel);
+        const blendWrap = document.createElement("label");
+        blendWrap.className = "mix-ctl";
+        blendWrap.innerHTML = `<span>Blend</span>`;
+        blendWrap.appendChild(blendSel);
+        grid.appendChild(blendWrap);
 
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "button mix-del";
-        del.textContent = "✕";
-        del.title = "Remove this layer";
-        del.addEventListener("click", () => {
-          this.mixLayers.splice(i, 1);
-          this.enterMixMode();
-        });
-        row.appendChild(del);
+        const slider = (
+          name: string,
+          min: number,
+          max: number,
+          value: number,
+          onInput: (v: number) => void,
+          title = "",
+          enabled = true,
+        ) => {
+          const wrap = document.createElement("label");
+          wrap.className = "mix-ctl";
+          wrap.title = title;
+          const span = document.createElement("span");
+          span.textContent = name;
+          const input = document.createElement("input");
+          input.type = "range";
+          input.min = String(min);
+          input.max = String(max);
+          input.value = String(value);
+          input.disabled = !enabled;
+          input.addEventListener("input", () => onInput(Number(input.value)));
+          wrap.append(span, input);
+          grid.appendChild(wrap);
+        };
+
+        if (layer.blend !== "mul") {
+          slider("Opacity", 5, 100, layer.opacity, (v) => {
+            layer.opacity = v;
+            update();
+          });
+        }
+        const windowable = layerWindowable(layer);
+        const windowTitle = windowable
+          ? ""
+          : "Plasma can't be windowed in Shade mode (its predictor destabilizes at the window edge)";
+        slider("Width", 10, 100, layer.w, (v) => {
+          layer.w = v;
+          update();
+        }, windowTitle || "How much of the canvas this layer's window covers", windowable);
+        slider("Height", 10, 100, layer.h, (v) => {
+          layer.h = v;
+          update();
+        }, windowTitle, windowable);
+        slider("Pos ↔", 0, 100, layer.x, (v) => {
+          layer.x = v;
+          update();
+        }, windowTitle || "Slides the window left–right (when smaller than the canvas)", windowable);
+        slider("Pos ↕", 0, 100, layer.y, (v) => {
+          layer.y = v;
+          update();
+        }, windowTitle, windowable);
+        card.appendChild(grid);
       }
-      container.appendChild(row);
+      container.appendChild(card);
     });
-    $("mix-add").hidden = this.mixLayers.length >= 4;
+
+    ($("mix-rotate") as HTMLSelectElement).value = String(this.mix.rotate);
+    $("mix-add").hidden = layers.length >= 4;
   }
 
   private wireHeader() {
@@ -334,7 +437,7 @@ export class App {
 
   private surprise() {
     if (this.mode === "mix") {
-      this.mixLayers = randomMix();
+      this.mix = randomMixState();
       this.enterMixMode();
       toast("🎲 Shuffled the stack!");
       return;
@@ -390,7 +493,7 @@ export class App {
 
   private applyPreset(preset: Preset) {
     if (preset.mode === "mix") {
-      this.mixLayers = sanitizeMix(preset.layers ?? []);
+      this.mix = sanitizeMixState({ layers: preset.layers, rotate: preset.rotate });
       this.enterMixMode();
       return;
     }

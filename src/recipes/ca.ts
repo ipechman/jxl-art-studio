@@ -62,13 +62,12 @@ ${perChannel(
     const s = ctx.scale;
     const fg = hexToRgb(String(v.fg)).map((c) => c * s);
     const bg = hexToRgb(String(v.bg)).map((c) => c * s);
-    return {
-      tree: perChannel(
-        caChannelTree(rule, fg[0], bg[0], ctx.width),
-        caChannelTree(rule, fg[1], bg[1], ctx.width),
-        caChannelTree(rule, fg[2], bg[2], ctx.width),
-      ),
-    };
+    const r = ctx.region ?? { x: 0, y: 0, w: ctx.width, h: ctx.height };
+    // seed at the top-center of the visible window so the pattern moves with it
+    const cx = r.x + Math.floor(r.w / 2);
+    const chan = (i: number) =>
+      caChannelTree(rule, fg[i], bg[i], ctx.width, cx, r.y);
+    return { tree: perChannel(chan(0), chan(1), chan(2)) };
   },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));
