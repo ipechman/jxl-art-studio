@@ -29,6 +29,19 @@ if W-NW > -1
   - NW 0
  - Select ${Number(v.b)}`;
   },
+  layer(v, _strokes, ctx) {
+    // Bitdepth is file-global; scale the offsets onto the 16-bit canvas
+    // instead (the "contrast depth" knob doesn't apply inside a mix).
+    const s = ctx.scale;
+    return {
+      header: v.palette === "none" ? "" : `RCT ${Number(v.palette)}`,
+      tree: `if W-NW > -1
+ if NW-N > -1
+  - W ${Number(v.a) * s}
+  - NW 0
+ - Select ${Number(v.b) * s}`,
+    };
+  },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));
     return {

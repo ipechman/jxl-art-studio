@@ -36,6 +36,7 @@
       <aside id="sidebar">
         <nav class="tabs">
           <button class="tab selected" data-tab="builder">🧑‍🎨 Easy studio</button>
+          <button class="tab" data-tab="mix">🎛 Mix</button>
           <button class="tab" data-tab="code">✳ Code</button>
         </nav>
 
@@ -68,6 +69,20 @@
               <button type="button" class="button" id="stroke-clear">🗑 Clear</button>
             </div>
           </div>
+        </section>
+
+        <section id="panel-mix" hidden>
+          <p class="hint">
+            Stack starters on top of each other — each layer is a real
+            JPEG&nbsp;XL frame blended into the one below it.
+          </p>
+          <div id="mix-layers"></div>
+          <button type="button" class="button" id="mix-add">＋ Add a layer</button>
+          <p class="hint">
+            Suns and doodles can only be the base layer — JPEG&nbsp;XL draws
+            splines on the first frame of a stack. The quilt sits this one out
+            (its block grid applies to the whole file).
+          </p>
         </section>
 
         <section id="panel-code" hidden>

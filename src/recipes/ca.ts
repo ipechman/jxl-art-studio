@@ -57,6 +57,19 @@ ${perChannel(
   caChannelTree(rule, fg[2], bg[2], w),
 )}`;
   },
+  layer(v, _strokes, ctx) {
+    const rule = Number(v.rule) & 255;
+    const s = ctx.scale;
+    const fg = hexToRgb(String(v.fg)).map((c) => c * s);
+    const bg = hexToRgb(String(v.bg)).map((c) => c * s);
+    return {
+      tree: perChannel(
+        caChannelTree(rule, fg[0], bg[0], ctx.width),
+        caChannelTree(rule, fg[1], bg[1], ctx.width),
+        caChannelTree(rule, fg[2], bg[2], ctx.width),
+      ),
+    };
+  },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));
     return {

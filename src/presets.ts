@@ -1,13 +1,20 @@
 import type { ParamValues, Stroke } from "./recipes/types.ts";
 
+/** One layer of a mixed artwork: a builder preset plus how it blends in. */
+export interface MixLayer {
+  presetId: string;
+  blend: "add" | "mul";
+}
+
 export interface Preset {
   id: string;
   name: string;
-  mode: "builder" | "code";
+  mode: "builder" | "code" | "mix";
   recipeId?: string;
   values?: ParamValues;
   strokes?: Stroke[];
   code?: string;
+  layers?: MixLayer[];
 }
 
 export const PRESETS: Preset[] = [
@@ -96,6 +103,15 @@ export const PRESETS: Preset[] = [
     mode: "builder",
     recipeId: "quilt",
     values: { cols: 4, rows: 3, seed: 42, palette: "34" },
+  },
+  {
+    id: "sunset-fractals",
+    name: "Sunset Fractals",
+    mode: "mix",
+    layers: [
+      { presetId: "golden-sunset", blend: "add" },
+      { presetId: "neon-triangles", blend: "add" },
+    ],
   },
   {
     id: "the-classic",

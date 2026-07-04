@@ -1,9 +1,11 @@
 /**
  * Share links. The tree code is stored as `zcode` = URL-safe base64 of
  * raw-deflate — the same scheme the community editors use. Builder state
- * (recipe + params + strokes) travels alongside in `r` and `p`.
+ * (recipe + params + strokes) travels alongside in `r` and `p`; mix state
+ * (layer list) in `m` and `p`.
  */
 import type { ParamValues, Stroke } from "./recipes/types.ts";
+import type { MixLayer } from "./presets.ts";
 
 async function pipeThrough(
   bytes: Uint8Array,
@@ -35,11 +37,12 @@ function b64urlDecode(s: string): Uint8Array {
 }
 
 export interface ShareState {
-  mode: "builder" | "code";
+  mode: "builder" | "code" | "mix";
   code: string;
   recipeId?: string;
   values?: ParamValues;
   strokes?: Stroke[];
+  layers?: MixLayer[];
 }
 
 export async function buildHash(state: ShareState): Promise<string> {
@@ -48,6 +51,9 @@ export async function buildHash(state: ShareState): Promise<string> {
     parts.push(`r=${encodeURIComponent(state.recipeId)}`);
     const payload = JSON.stringify({ v: state.values ?? {}, s: state.strokes ?? [] });
     parts.push(`p=${b64urlEncode(await deflateRaw(payload))}`);
+  } else if (state.mode === "mix" && state.layers?.length) {
+    parts.push("m=1");
+    parts.push(`p=${b64urlEncode(await deflateRaw(JSON.stringify({ l: state.layers })))}`);
   }
   return "#" + parts.join("&");
 }
@@ -59,8 +65,14 @@ export async function parseHash(hash: string): Promise<ShareState | null> {
   if (!zcode) return null;
   try {
     const code = await inflateRaw(b64urlDecode(zcode));
-    const recipeId = params.get("r") ?? undefined;
     const p = params.get("p");
+    if (params.get("m") && p) {
+      const payload = JSON.parse(await inflateRaw(b64urlDecode(p))) as {
+        l: MixLayer[];
+      };
+      return { mode: "mix", code, layers: payload.l };
+    }
+    const recipeId = params.get("r") ?? undefined;
     if (recipeId && p) {
       const payload = JSON.parse(await inflateRaw(b64urlDecode(p))) as {
         v: ParamValues;

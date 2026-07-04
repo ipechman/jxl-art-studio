@@ -30,6 +30,23 @@ export interface Stroke {
   points: [number, number][];
 }
 
+/** Rendering context when a recipe is one layer of a mixed artwork. */
+export interface LayerCtx {
+  width: number;
+  height: number;
+  /** Multiply 8-bit sample constants by this (257 on the 16-bit mix canvas). */
+  scale: number;
+}
+
+/** A recipe rendered as a mixable layer. */
+export interface LayerParts {
+  /** Per-frame header keywords that work on any layer (e.g. `RCT 6`). */
+  header?: string;
+  /** Spline blocks — only rendered on the base layer of a mix. */
+  splines?: string;
+  tree: string;
+}
+
 export interface Recipe {
   id: string;
   name: string;
@@ -40,6 +57,11 @@ export interface Recipe {
   /** Whether this recipe uses drawn strokes (shows draw tools on the preview). */
   usesStrokes?: boolean;
   generate(values: ParamValues, strokes: Stroke[]): string;
+  /**
+   * Emit this recipe as one layer of a multi-frame mix. Recipes without
+   * this method (e.g. quilt, whose GroupShift is file-global) can't be mixed.
+   */
+  layer?(values: ParamValues, strokes: Stroke[], ctx: LayerCtx): LayerParts;
   /** Random parameter values for "Surprise me". */
   randomize(): ParamValues;
 }
