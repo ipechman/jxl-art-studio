@@ -1,33 +1,40 @@
-import type { Recipe, ParamValues } from "./types.ts";
+import type { Recipe, ParamValues, LayerParts } from "./types.ts";
 import { hexToRgb, perChannel, q16, mulberry32, randHex, pick } from "./helpers.ts";
 
-function verticalCode(w: number, h: number, top: number[], bottom: number[]) {
+// All trees are 16-bit native (Bitdepth 16), so layers reuse them unscaled.
+
+function verticalTree(_w: number, h: number, top: number[], bottom: number[]) {
   const d = top.map((t, i) => Math.round(((bottom[i] - t) * 257) / (h - 1)));
-  return `Width ${w} Height ${h} Bitdepth 16
-if y > 0
+  return `if y > 0
  ${perChannel(`- N ${d[0]}`, `- N ${d[1]}`, `- N ${d[2]}`)}
  ${perChannel(`- Set ${q16(top[0])}`, `- Set ${q16(top[1])}`, `- Set ${q16(top[2])}`)}`;
 }
 
-function horizontalCode(w: number, h: number, left: number[], right: number[]) {
+function horizontalTree(w: number, _h: number, left: number[], right: number[]) {
   const d = left.map((t, i) => Math.round(((right[i] - t) * 257) / (w - 1)));
-  return `Width ${w} Height ${h} Bitdepth 16
-if x > 0
+  return `if x > 0
  ${perChannel(`- W ${d[0]}`, `- W ${d[1]}`, `- W ${d[2]}`)}
  ${perChannel(`- Set ${q16(left[0])}`, `- Set ${q16(left[1])}`, `- Set ${q16(left[2])}`)}`;
 }
 
-function diagonalCode(w: number, h: number, a: number[], b: number[]) {
+function diagonalTree(w: number, h: number, a: number[], b: number[]) {
   // value = A + d·(x+y); the Gradient predictor extends the plane exactly.
   const d = a.map((t, i) => Math.round(((b[i] - t) * 257) / (w + h - 2)));
-  return `Width ${w} Height ${h} Bitdepth 16
-if y > 0
+  return `if y > 0
  if x > 0
   - Gradient 0
   ${perChannel(`- N ${d[0]}`, `- N ${d[1]}`, `- N ${d[2]}`)}
  if x > 0
   ${perChannel(`- W ${d[0]}`, `- W ${d[1]}`, `- W ${d[2]}`)}
   ${perChannel(`- Set ${q16(a[0])}`, `- Set ${q16(a[1])}`, `- Set ${q16(a[2])}`)}`;
+}
+
+function buildTree(v: ParamValues, w: number, h: number): string {
+  const a = hexToRgb(String(v.from));
+  const b = hexToRgb(String(v.to));
+  if (v.direction === "horizontal") return horizontalTree(w, h, a, b);
+  if (v.direction === "diagonal") return diagonalTree(w, h, a, b);
+  return verticalTree(w, h, a, b);
 }
 
 export const gradient: Recipe = {
@@ -63,11 +70,10 @@ export const gradient: Recipe = {
   ],
   generate(v: ParamValues) {
     const size = Number(v.size);
-    const a = hexToRgb(String(v.from));
-    const b = hexToRgb(String(v.to));
-    if (v.direction === "horizontal") return horizontalCode(size, size, a, b);
-    if (v.direction === "diagonal") return diagonalCode(size, size, a, b);
-    return verticalCode(size, size, a, b);
+    return `Width ${size} Height ${size} Bitdepth 16\n${buildTree(v, size, size)}`;
+  },
+  layer(v, _strokes, ctx): LayerParts {
+    return { tree: buildTree(v, ctx.width, ctx.height) };
   },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));

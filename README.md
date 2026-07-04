@@ -29,6 +29,13 @@ Plus: starter gallery, "Surprise me" randomizer, byte meter with the 1 KB art
 budget, `.jxl` / PNG download, and share links (the code travels compressed in
 the URL hash, same `zcode` scheme as the community editors).
 
+The **Mix** tab stacks starters on top of each other — sun + fractals, glitch
+under stripes, up to four layers. Each layer is a real JPEG XL frame
+(`NotLast`) blended with `kAdd` or `kMul` onto a shared 16-bit canvas; 8-bit
+recipes scale their constants ×257 to match. Two codec-level constraints
+apply: splines only render on the first frame (so sun/doodle presets are
+base-only), and the quilt's `GroupShift` is file-global (so it can't be mixed).
+
 The **Code** tab shows the real tree program behind every picture and lets you
 edit it live, with a cheat sheet of the syntax. That's the bridge from playing
 with sliders to writing tree code by hand.

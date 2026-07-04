@@ -7,6 +7,7 @@ import { encodeTree, decodeJxl, toPng } from "./jxl-node.mjs";
 import { RECIPES } from "../src/recipes/index.ts";
 import { defaultsOf } from "../src/recipes/types.ts";
 import { PRESETS } from "../src/presets.ts";
+import { generateMix, mixablePresets, randomMix } from "../src/mixer.ts";
 
 const outDir = process.argv[2] ?? "renders";
 mkdirSync(outDir, { recursive: true });
@@ -47,11 +48,31 @@ for (const p of PRESETS) {
   const code =
     p.mode === "code"
       ? p.code
-      : RECIPES.find((r) => r.id === p.recipeId).generate(
-          { ...defaultsOf(RECIPES.find((r) => r.id === p.recipeId)), ...p.values },
-          p.strokes ?? [],
-        );
+      : p.mode === "mix"
+        ? generateMix(p.layers)
+        : RECIPES.find((r) => r.id === p.recipeId).generate(
+            { ...defaultsOf(RECIPES.find((r) => r.id === p.recipeId)), ...p.values },
+            p.strokes ?? [],
+          );
   run(`preset-${p.id}`, code);
+}
+
+console.log("=== mixes: every base x overlay pair ===");
+for (const base of mixablePresets("base")) {
+  for (const over of mixablePresets("overlay")) {
+    run(
+      `mix-${base.id}--${over.id}`,
+      generateMix([
+        { presetId: base.id, blend: "add" },
+        { presetId: over.id, blend: "add" },
+      ]),
+    );
+  }
+}
+
+console.log("=== mixes: randomized stacks (8) ===");
+for (let i = 0; i < 8; i++) {
+  run(`mix-random-${i}`, generateMix(randomMix()));
 }
 
 console.log(failures ? `\n${failures} FAILURES` : "\nall ok");

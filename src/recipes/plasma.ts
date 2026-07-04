@@ -30,6 +30,18 @@ if y > 0
   - Set ${Number(v.flare)}
  - W ${Number(v.spark)}`;
   },
+  layer(v, _strokes, ctx) {
+    const s = ctx.scale;
+    const drift = Number(v.drift) === 0 ? -1 : Number(v.drift);
+    return {
+      header: `RCT ${Number(v.palette)}`,
+      tree: `if y > 0
+ if W > ${Number(v.trigger) * s}
+  - Weighted ${drift * s}
+  - Set ${Number(v.flare) * s}
+ - W ${Number(v.spark) * s}`,
+    };
+  },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));
     return {

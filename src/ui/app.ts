@@ -10,17 +10,25 @@ import { renderControls } from "./controls.ts";
 import { Preview } from "./preview.ts";
 import { initGallery } from "./gallery.ts";
 import { toast } from "./toast.ts";
-import { PRESETS, type Preset } from "../presets.ts";
+import { PRESETS, type MixLayer, type Preset } from "../presets.ts";
+import {
+  defaultMix,
+  generateMix,
+  mixablePresets,
+  randomMix,
+  sanitizeMix,
+} from "../mixer.ts";
 import { buildHash, parseHash } from "../share.ts";
 
 const $ = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
 export class App {
-  private mode: "builder" | "code" = "builder";
+  private mode: "builder" | "code" | "mix" = "builder";
   private recipe: Recipe = RECIPES[0];
   private values = new Map<string, ParamValues>();
   private strokes: Stroke[] = [];
+  private mixLayers: MixLayer[] = defaultMix();
   private code = "";
   private lastBytes: Uint8Array | null = null;
   private lastGoodCode = "";
@@ -55,6 +63,16 @@ export class App {
     initGallery($("gallery-strip"), PRESETS, (p) => this.applyPreset(p));
     window.addEventListener("resize", () => this.preview.setZoom("fit"));
 
+    $("mix-add").addEventListener("click", () => {
+      if (this.mixLayers.length >= 4) return;
+      const overlays = mixablePresets("overlay");
+      this.mixLayers.push({
+        presetId: overlays[Math.floor(Math.random() * overlays.length)].id,
+        blend: "add",
+      });
+      this.enterMixMode();
+    });
+
     parseHash(location.hash).then((shared) => {
       if (shared?.mode === "builder" && shared.recipeId) {
         const r = recipeById(shared.recipeId);
@@ -65,6 +83,11 @@ export class App {
           this.selectRecipe(r.id, false);
           return;
         }
+      }
+      if (shared?.mode === "mix" && shared.layers) {
+        this.mixLayers = sanitizeMix(shared.layers);
+        this.enterMixMode();
+        return;
       }
       if (shared?.mode === "code") {
         this.setMode("code");
@@ -89,10 +112,14 @@ export class App {
   }
 
   private regenerate() {
-    const strokes = this.pendingStroke
-      ? [...this.strokes, this.pendingStroke]
-      : this.strokes;
-    this.code = this.recipe.generate(this.valuesFor(this.recipe), strokes);
+    if (this.mode === "mix") {
+      this.code = generateMix(this.mixLayers);
+    } else {
+      const strokes = this.pendingStroke
+        ? [...this.strokes, this.pendingStroke]
+        : this.strokes;
+      this.code = this.recipe.generate(this.valuesFor(this.recipe), strokes);
+    }
     ($("code-editor") as HTMLTextAreaElement).value = this.code;
   }
 
@@ -141,17 +168,21 @@ export class App {
     if (msg) box.textContent = msg;
   }
 
+  private shareState() {
+    return {
+      mode: this.mode,
+      code: this.lastGoodCode || this.code,
+      recipeId: this.recipe.id,
+      values: this.valuesFor(this.recipe),
+      strokes: this.strokes,
+      layers: this.mixLayers,
+    };
+  }
+
   private scheduleHashUpdate() {
     clearTimeout(this.hashTimer);
     this.hashTimer = window.setTimeout(async () => {
-      const hash = await buildHash({
-        mode: this.mode,
-        code: this.lastGoodCode || this.code,
-        recipeId: this.recipe.id,
-        values: this.valuesFor(this.recipe),
-        strokes: this.strokes,
-      });
-      history.replaceState(null, "", hash);
+      history.replaceState(null, "", await buildHash(this.shareState()));
     }, 400);
   }
 
@@ -194,10 +225,11 @@ export class App {
     this.refresh(0);
   }
 
-  private setMode(mode: "builder" | "code") {
+  private setMode(mode: "builder" | "code" | "mix") {
     this.mode = mode;
     $("panel-builder").hidden = mode !== "builder";
     $("panel-code").hidden = mode !== "code";
+    $("panel-mix").hidden = mode !== "mix";
     document
       .querySelectorAll<HTMLButtonElement>(".tab")
       .forEach((b) => b.classList.toggle("selected", b.dataset.tab === mode));
@@ -209,16 +241,88 @@ export class App {
   private wireTabs() {
     document.querySelectorAll<HTMLButtonElement>(".tab").forEach((b) =>
       b.addEventListener("click", () => {
-        const target = b.dataset.tab as "builder" | "code";
+        const target = b.dataset.tab as "builder" | "code" | "mix";
         if (target === this.mode) return;
         if (target === "builder") {
           this.selectRecipe(this.recipe.id);
+        } else if (target === "mix") {
+          this.enterMixMode();
         } else {
           this.setMode("code");
           this.refresh(0);
         }
       }),
     );
+  }
+
+  private enterMixMode() {
+    this.setMode("mix");
+    this.rebuildMixUI();
+    this.regenerate();
+    this.refresh(0);
+  }
+
+  private rebuildMixUI() {
+    const container = $("mix-layers");
+    container.innerHTML = "";
+    this.mixLayers.forEach((layer, i) => {
+      const row = document.createElement("div");
+      row.className = "mix-row";
+
+      const label = document.createElement("span");
+      label.className = "mix-label";
+      label.textContent = i === 0 ? "Base" : `Layer ${i + 1}`;
+      row.appendChild(label);
+
+      const presetSel = document.createElement("select");
+      for (const p of mixablePresets(i === 0 ? "base" : "overlay")) {
+        const o = document.createElement("option");
+        o.value = p.id;
+        o.textContent = p.name;
+        presetSel.appendChild(o);
+      }
+      presetSel.value = layer.presetId;
+      presetSel.addEventListener("change", () => {
+        layer.presetId = presetSel.value;
+        this.regenerate();
+        this.refresh();
+      });
+      row.appendChild(presetSel);
+
+      if (i > 0) {
+        const blendSel = document.createElement("select");
+        blendSel.className = "mix-blend";
+        for (const [value, text] of [
+          ["add", "✨ Glow (add)"],
+          ["mul", "🌑 Shade (multiply)"],
+        ]) {
+          const o = document.createElement("option");
+          o.value = value;
+          o.textContent = text;
+          blendSel.appendChild(o);
+        }
+        blendSel.value = layer.blend;
+        blendSel.addEventListener("change", () => {
+          layer.blend = blendSel.value as MixLayer["blend"];
+          this.regenerate();
+          this.refresh();
+        });
+        row.appendChild(blendSel);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "button mix-del";
+        del.textContent = "✕";
+        del.title = "Remove this layer";
+        del.addEventListener("click", () => {
+          this.mixLayers.splice(i, 1);
+          this.enterMixMode();
+        });
+        row.appendChild(del);
+      }
+      container.appendChild(row);
+    });
+    $("mix-add").hidden = this.mixLayers.length >= 4;
   }
 
   private wireHeader() {
@@ -229,6 +333,12 @@ export class App {
   }
 
   private surprise() {
+    if (this.mode === "mix") {
+      this.mixLayers = randomMix();
+      this.enterMixMode();
+      toast("🎲 Shuffled the stack!");
+      return;
+    }
     // sometimes hop to a different recipe — that's half the fun of the dice
     if (this.mode === "code" || Math.random() < 0.4) {
       const others = RECIPES.filter(
@@ -251,7 +361,9 @@ export class App {
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${this.mode === "code" ? "art" : this.recipe.id}-${this.lastBytes.length}b.jxl`;
+    const stem =
+      this.mode === "code" ? "art" : this.mode === "mix" ? "mix" : this.recipe.id;
+    a.download = `${stem}-${this.lastBytes.length}b.jxl`;
     a.click();
     URL.revokeObjectURL(a.href);
     toast(`Saved a real JPEG XL file — just ${this.lastBytes.length} bytes.`);
@@ -270,19 +382,18 @@ export class App {
   }
 
   private async copyLink() {
-    const hash = await buildHash({
-      mode: this.mode,
-      code: this.lastGoodCode || this.code,
-      recipeId: this.recipe.id,
-      values: this.valuesFor(this.recipe),
-      strokes: this.strokes,
-    });
+    const hash = await buildHash(this.shareState());
     const url = `${location.origin}${location.pathname}${hash}`;
     await navigator.clipboard.writeText(url);
     toast("🔗 Link copied — anyone can open your art with it.");
   }
 
   private applyPreset(preset: Preset) {
+    if (preset.mode === "mix") {
+      this.mixLayers = sanitizeMix(preset.layers ?? []);
+      this.enterMixMode();
+      return;
+    }
     if (preset.mode === "code") {
       this.setMode("code");
       this.code = preset.code!;

@@ -1,6 +1,7 @@
 /** The "Starters" strip: preset cards with live-rendered thumbnails. */
 import type { Preset } from "../presets.ts";
 import { recipeById } from "../recipes/index.ts";
+import { generateMix } from "../mixer.ts";
 import { encodeTree, decodeJxl } from "../jxl-client.ts";
 
 export function initGallery(
@@ -35,10 +36,12 @@ export function initGallery(
         const code =
           preset.mode === "code"
             ? preset.code!
-            : recipeById(preset.recipeId!)!.generate(
-                preset.values!,
-                preset.strokes ?? [],
-              );
+            : preset.mode === "mix"
+              ? generateMix(preset.layers!)
+              : recipeById(preset.recipeId!)!.generate(
+                  preset.values!,
+                  preset.strokes ?? [],
+                );
         const bytes = await encodeTree(code);
         const img = await decodeJxl(bytes);
         const off = new OffscreenCanvas(img.width, img.height);

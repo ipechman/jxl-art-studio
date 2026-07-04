@@ -52,6 +52,16 @@ ${orient}if N > 254
  - Set 0
  - N ${Number(v.step)}`;
   },
+  layer(v, _strokes, ctx) {
+    // Orientation is file-global, so direction is ignored in a mix.
+    const s = ctx.scale;
+    return {
+      header: `RCT ${Number(v.palette)}`,
+      tree: `if N > ${254 * s}
+ - Set 0
+ - N ${Number(v.step) * s}`,
+    };
+  },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));
     return {
