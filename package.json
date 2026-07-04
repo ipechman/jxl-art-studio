@@ -1,0 +1,15 @@
+{
+  "name": "jxl-art-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^6.3.5"
+  }
+}
