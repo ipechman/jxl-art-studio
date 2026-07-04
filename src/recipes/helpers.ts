@@ -69,14 +69,18 @@ function caStepTree(rule: number, fg: number, bg: number): string {
    ${leaf(1)}`;
 }
 
-/** Full per-channel CA tree: seed row 0 with a single center pixel, then run `rule`. */
+/**
+ * Full per-channel CA tree: a single seed pixel at (cx, seedY), then run
+ * `rule` on the rows below. Defaults reproduce the classic top-center seed.
+ */
 export function caChannelTree(
   rule: number,
   fg: number,
   bg: number,
   width: number,
+  cx = Math.floor(width / 2),
+  seedY = 0,
 ): string {
-  const cx = Math.floor(width / 2);
   const seed = `if x > ${cx}
  - Set ${bg}
  if x > ${cx - 1}
@@ -95,7 +99,7 @@ export function caChannelTree(
     }
     step = caStepTree(crule, bg, fg);
   }
-  return `if y > 0\n ${step}\n ${seed}`;
+  return `if y > ${seedY}\n ${step}\n ${seed}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,18 @@
 import type { ParamValues, Stroke } from "./recipes/types.ts";
 
-/** One layer of a mixed artwork: a builder preset plus how it blends in. */
+/** One layer of a mixed artwork: a builder preset plus how it sits and blends. */
 export interface MixLayer {
   presetId: string;
-  blend: "add" | "mul";
+  /** normal = alpha blend (kBlend), add = glow (kAlphaWeightedAdd), mul = shade (kMul) */
+  blend: "normal" | "add" | "mul";
+  /** 5..100 %. Ignored by "mul" (the codec's kMul disregards alpha). */
+  opacity: number;
+  /** Window position 0..100 % (where the layer's visible window sits). */
+  x: number;
+  y: number;
+  /** Window size 10..100 % of the canvas. */
+  w: number;
+  h: number;
 }
 
 export interface Preset {
@@ -14,7 +23,9 @@ export interface Preset {
   values?: ParamValues;
   strokes?: Stroke[];
   code?: string;
-  layers?: MixLayer[];
+  layers?: Partial<MixLayer>[];
+  /** Quarter-turns of whole-artwork rotation for mix presets (0-3). */
+  rotate?: number;
 }
 
 export const PRESETS: Preset[] = [
@@ -109,8 +120,18 @@ export const PRESETS: Preset[] = [
     name: "Sunset Fractals",
     mode: "mix",
     layers: [
-      { presetId: "golden-sunset", blend: "add" },
+      { presetId: "golden-sunset" },
       { presetId: "neon-triangles", blend: "add" },
+    ],
+  },
+  {
+    id: "fractal-window",
+    name: "Fractal Window",
+    mode: "mix",
+    layers: [
+      { presetId: "ocean-deep" },
+      { presetId: "amber-chaos", blend: "normal", opacity: 90, w: 55, h: 55, x: 50, y: 62 },
+      { presetId: "lime-ribbons", blend: "add", opacity: 25 },
     ],
   },
   {

@@ -357,10 +357,60 @@ main {
   gap: 8px;
 }
 
+.mix-card {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .mix-row {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.mix-btn {
+  padding: 3px 7px;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+}
+
+.mix-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.mix-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.mix-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.mix-ctl span {
+  min-width: 46px;
+}
+
+.mix-ctl input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent-strong);
+}
+
+.mix-ctl select {
+  flex: 1;
+  min-width: 0;
 }
 
 .mix-label {

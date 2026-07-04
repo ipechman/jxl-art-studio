@@ -1,20 +1,55 @@
 /**
- * Preset mixing: stacks builder presets as JPEG XL layers (`NotLast` frames)
- * blended with kAdd / kMul. Rules established empirically (tools/batch4.mjs):
+ * Preset mixing: stacks builder presets as JPEG XL layers (`NotLast` frames).
+ * Rules established empirically (tools/batch4.mjs, tools/batch5.mjs):
  *  - all layers share one 16-bit canvas; 8-bit recipes scale constants ×257
+ *  - a global Alpha channel gives true per-layer opacity: kBlend (normal) and
+ *    kAlphaWeightedAdd (glow) weight the layer by its alpha; kMul ignores it
+ *  - overlay frames MUST be full-canvas (smaller/upsampled frames crash the
+ *    encoder), so move/scale is done in-tree: the alpha channel becomes a
+ *    rectangular window and position-aware recipes anchor patterns to it
  *  - splines only render on the base frame, so spline presets can't overlay
- *  - RCT is per-layer; Bitdepth/Orientation/GroupShift are file-global
- *    (which is why the quilt recipe has no layer() and can't be mixed)
+ *  - Orientation/Bitdepth/GroupShift are file-global: rotation applies to the
+ *    whole artwork, and the quilt recipe (GroupShift) can't be mixed at all
  */
 import { PRESETS, type MixLayer, type Preset } from "./presets.ts";
 import { recipeById } from "./recipes/index.ts";
-import { defaultsOf } from "./recipes/types.ts";
+import { defaultsOf, type LayerCtx } from "./recipes/types.ts";
 
 export const MIX_SIZE = 512;
 const MAX_LAYERS = 4;
 
 /** Recipes whose layers carry splines — usable only as the base of a mix. */
 const SPLINE_RECIPES = new Set(["sunset", "doodle"]);
+
+export interface MixState {
+  layers: MixLayer[];
+  /** Whole-artwork rotation in quarter-turns (0-3); Orientation is file-global. */
+  rotate: number;
+}
+
+export const LAYER_DEFAULTS: Omit<MixLayer, "presetId"> = {
+  blend: "add",
+  opacity: 100,
+  x: 50,
+  y: 50,
+  w: 100,
+  h: 100,
+};
+
+/** EXIF orientation values for 0/90/180/270 degrees clockwise. */
+const ORIENTATIONS = [0, 4, 2, 6];
+
+const BLEND_KEYWORD: Record<MixLayer["blend"], string> = {
+  normal: "kBlend",
+  add: "kAlphaWeightedAdd",
+  mul: "kMul",
+};
+
+/** Whether this layer's window sliders have any effect (see generateMix). */
+export function layerWindowable(l: MixLayer): boolean {
+  const preset = PRESETS.find((p) => p.id === l.presetId);
+  return !(l.blend === "mul" && preset?.recipeId === "plasma");
+}
 
 export function mixablePresets(role: "base" | "overlay"): Preset[] {
   return PRESETS.filter((p) => {
@@ -26,54 +61,141 @@ export function mixablePresets(role: "base" | "overlay"): Preset[] {
   });
 }
 
-export function defaultMix(): MixLayer[] {
-  return [
-    { presetId: "golden-sunset", blend: "add" },
-    { presetId: "neon-triangles", blend: "add" },
-  ];
+export function defaultMixState(): MixState {
+  return {
+    layers: [
+      { ...LAYER_DEFAULTS, presetId: "golden-sunset" },
+      { ...LAYER_DEFAULTS, presetId: "neon-triangles" },
+    ],
+    rotate: 0,
+  };
 }
 
-export function randomMix(): MixLayer[] {
+export function randomMixState(): MixState {
   const pickFrom = (arr: Preset[]) => arr[Math.floor(Math.random() * arr.length)];
-  const layers: MixLayer[] = [{ presetId: pickFrom(mixablePresets("base")).id, blend: "add" }];
+  const rnd = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1));
+  const layers: MixLayer[] = [
+    { ...LAYER_DEFAULTS, presetId: pickFrom(mixablePresets("base")).id },
+  ];
   const n = 1 + Math.floor(Math.random() * 2);
   for (let i = 0; i < n; i++) {
+    const roll = Math.random();
+    const blend = roll < 0.5 ? "add" : roll < 0.85 ? "normal" : "mul";
+    const windowed = Math.random() < 0.45;
     layers.push({
       presetId: pickFrom(mixablePresets("overlay")).id,
-      blend: Math.random() < 0.85 ? "add" : "mul",
+      blend,
+      opacity: blend === "mul" ? 100 : rnd(35, 100),
+      w: windowed ? rnd(30, 80) : 100,
+      h: windowed ? rnd(30, 80) : 100,
+      x: rnd(0, 100),
+      y: rnd(0, 100),
     });
   }
-  return layers;
+  return { layers, rotate: Math.random() < 0.2 ? rnd(1, 3) : 0 };
 }
 
-export function sanitizeMix(layers: MixLayer[]): MixLayer[] {
+export function sanitizeMixState(input: {
+  layers?: Partial<MixLayer>[];
+  rotate?: number;
+}): MixState {
   const base = mixablePresets("base").map((p) => p.id);
   const overlay = mixablePresets("overlay").map((p) => p.id);
-  const out = layers
-    .filter((l, i) => (i === 0 ? base : overlay).includes(l.presetId))
+  const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : dflt;
+  };
+  const layers = (input.layers ?? [])
+    .filter((l, i) => l.presetId && (i === 0 ? base : overlay).includes(l.presetId))
     .slice(0, MAX_LAYERS)
-    .map((l) => ({ presetId: l.presetId, blend: l.blend === "mul" ? "mul" : "add" }) as MixLayer);
-  return out.length ? out : defaultMix();
+    .map(
+      (l): MixLayer => ({
+        presetId: l.presetId!,
+        blend: l.blend === "mul" || l.blend === "normal" ? l.blend : "add",
+        opacity: clamp(l.opacity, 5, 100, 100),
+        x: clamp(l.x, 0, 100, 50),
+        y: clamp(l.y, 0, 100, 50),
+        w: clamp(l.w, 10, 100, 100),
+        h: clamp(l.h, 10, 100, 100),
+      }),
+    );
+  return {
+    layers: layers.length ? layers : defaultMixState().layers,
+    rotate: clamp(input.rotate, 0, 3, 0),
+  };
 }
 
-export function generateMix(layers: MixLayer[]): string {
-  const ctx = { width: MIX_SIZE, height: MIX_SIZE, scale: 257 };
+function regionOf(l: MixLayer): { x: number; y: number; w: number; h: number } {
+  const w = Math.max(8, Math.round((MIX_SIZE * l.w) / 100));
+  const h = Math.max(8, Math.round((MIX_SIZE * l.h) / 100));
+  return {
+    x: Math.round(((MIX_SIZE - w) * l.x) / 100),
+    y: Math.round(((MIX_SIZE - h) * l.y) / 100),
+    w,
+    h,
+  };
+}
+
+/**
+ * Wraps `inner` so pixels outside the region become `outer`. Emits only the
+ * comparisons a partial window actually needs (full canvas → `inner` as-is).
+ */
+function rectMask(
+  inner: string,
+  outer: string,
+  r: { x: number; y: number; w: number; h: number },
+): string {
+  let expr = inner;
+  if (r.x + r.w < MIX_SIZE) expr = `if x > ${r.x + r.w - 1}\n ${outer}\n ${expr}`;
+  if (r.x > 0) expr = `if x > ${r.x - 1}\n ${expr}\n ${outer}`;
+  if (r.y + r.h < MIX_SIZE) expr = `if y > ${r.y + r.h - 1}\n ${outer}\n ${expr}`;
+  if (r.y > 0) expr = `if y > ${r.y - 1}\n ${expr}\n ${outer}`;
+  return expr;
+}
+
+export function generateMix(state: MixState): string {
+  const { layers, rotate } = state;
   const parts: string[] = [];
   layers.forEach((l, i) => {
     const preset = PRESETS.find((p) => p.id === l.presetId);
     const recipe = preset && recipeById(preset.recipeId!);
     if (!preset || !recipe?.layer) return;
+    // Plasma's unclamped Weighted predictor explodes when it reads the 65535
+    // color mask of a shade window, corrupting the file — keep it full-canvas.
+    const windowable = !(l.blend === "mul" && recipe.id === "plasma");
+    const region =
+      i === 0 || !windowable
+        ? { x: 0, y: 0, w: MIX_SIZE, h: MIX_SIZE }
+        : regionOf(l);
+    const ctx: LayerCtx = { width: MIX_SIZE, height: MIX_SIZE, scale: 257, region };
     const { header, splines, tree } = recipe.layer(
       { ...defaultsOf(recipe), ...preset.values },
       preset.strokes ?? [],
       ctx,
     );
-    const head: string[] = [`Width ${ctx.width} Height ${ctx.height}`];
-    if (i === 0) head.push("Bitdepth 16");
-    else head.push(`BlendMode ${l.blend === "mul" ? "kMul" : "kAdd"}`);
+
+    // The alpha channel (c == 3) carries opacity and the visibility window.
+    const alpha = Math.round((65535 * l.opacity) / 100);
+    let framed: string;
+    if (i === 0) {
+      framed = `if c > 2\n - Set 65535\n ${tree}`;
+    } else if (l.blend === "mul") {
+      // kMul ignores alpha, so the window masks color with 65535 (identity)
+      framed = `if c > 2\n - Set 65535\n ${rectMask(tree, "- Set 65535", region)}`;
+    } else {
+      framed = `if c > 2\n ${rectMask(`- Set ${alpha}`, "- Set 0", region)}\n ${tree}`;
+    }
+
+    const head: string[] = [`Width ${MIX_SIZE} Height ${MIX_SIZE}`];
+    if (i === 0) {
+      head.push("Bitdepth 16 Alpha");
+      if (rotate) head.push(`Orientation ${ORIENTATIONS[rotate & 3]}`);
+    } else {
+      head.push(`BlendMode ${BLEND_KEYWORD[l.blend]}`);
+    }
     if (i < layers.length - 1) head.push("NotLast");
     parts.push(
-      [head.join(" "), header, i === 0 ? splines : "", tree]
+      [head.join(" "), header, i === 0 ? splines : "", framed]
         .filter(Boolean)
         .join("\n"),
     );

@@ -2,39 +2,48 @@ import type { Recipe, ParamValues, LayerParts } from "./types.ts";
 import { hexToRgb, perChannel, q16, mulberry32, randHex, pick } from "./helpers.ts";
 
 // All trees are 16-bit native (Bitdepth 16), so layers reuse them unscaled.
+// Ramps are anchored to a region (rx, ry, rw, rh) so mixed layers can move;
+// full-canvas regions reproduce the classic `if y > 0` seeding exactly.
 
-function verticalTree(_w: number, h: number, top: number[], bottom: number[]) {
-  const d = top.map((t, i) => Math.round(((bottom[i] - t) * 257) / (h - 1)));
-  return `if y > 0
+interface Region {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function verticalTree(r: Region, top: number[], bottom: number[]) {
+  const d = top.map((t, i) => Math.round(((bottom[i] - t) * 257) / (r.h - 1)));
+  return `if y > ${r.y}
  ${perChannel(`- N ${d[0]}`, `- N ${d[1]}`, `- N ${d[2]}`)}
  ${perChannel(`- Set ${q16(top[0])}`, `- Set ${q16(top[1])}`, `- Set ${q16(top[2])}`)}`;
 }
 
-function horizontalTree(w: number, _h: number, left: number[], right: number[]) {
-  const d = left.map((t, i) => Math.round(((right[i] - t) * 257) / (w - 1)));
-  return `if x > 0
+function horizontalTree(r: Region, left: number[], right: number[]) {
+  const d = left.map((t, i) => Math.round(((right[i] - t) * 257) / (r.w - 1)));
+  return `if x > ${r.x}
  ${perChannel(`- W ${d[0]}`, `- W ${d[1]}`, `- W ${d[2]}`)}
  ${perChannel(`- Set ${q16(left[0])}`, `- Set ${q16(left[1])}`, `- Set ${q16(left[2])}`)}`;
 }
 
-function diagonalTree(w: number, h: number, a: number[], b: number[]) {
+function diagonalTree(r: Region, a: number[], b: number[]) {
   // value = A + d·(x+y); the Gradient predictor extends the plane exactly.
-  const d = a.map((t, i) => Math.round(((b[i] - t) * 257) / (w + h - 2)));
-  return `if y > 0
- if x > 0
+  const d = a.map((t, i) => Math.round(((b[i] - t) * 257) / (r.w + r.h - 2)));
+  return `if y > ${r.y}
+ if x > ${r.x}
   - Gradient 0
   ${perChannel(`- N ${d[0]}`, `- N ${d[1]}`, `- N ${d[2]}`)}
- if x > 0
+ if x > ${r.x}
   ${perChannel(`- W ${d[0]}`, `- W ${d[1]}`, `- W ${d[2]}`)}
   ${perChannel(`- Set ${q16(a[0])}`, `- Set ${q16(a[1])}`, `- Set ${q16(a[2])}`)}`;
 }
 
-function buildTree(v: ParamValues, w: number, h: number): string {
+function buildTree(v: ParamValues, r: Region): string {
   const a = hexToRgb(String(v.from));
   const b = hexToRgb(String(v.to));
-  if (v.direction === "horizontal") return horizontalTree(w, h, a, b);
-  if (v.direction === "diagonal") return diagonalTree(w, h, a, b);
-  return verticalTree(w, h, a, b);
+  if (v.direction === "horizontal") return horizontalTree(r, a, b);
+  if (v.direction === "diagonal") return diagonalTree(r, a, b);
+  return verticalTree(r, a, b);
 }
 
 export const gradient: Recipe = {
@@ -70,10 +79,11 @@ export const gradient: Recipe = {
   ],
   generate(v: ParamValues) {
     const size = Number(v.size);
-    return `Width ${size} Height ${size} Bitdepth 16\n${buildTree(v, size, size)}`;
+    return `Width ${size} Height ${size} Bitdepth 16\n${buildTree(v, { x: 0, y: 0, w: size, h: size })}`;
   },
   layer(v, _strokes, ctx): LayerParts {
-    return { tree: buildTree(v, ctx.width, ctx.height) };
+    const r = ctx.region ?? { x: 0, y: 0, w: ctx.width, h: ctx.height };
+    return { tree: buildTree(v, r) };
   },
   randomize() {
     const rnd = mulberry32(Math.floor(Math.random() * 1e9));
