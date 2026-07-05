@@ -45,30 +45,6 @@
           <p id="recipe-blurb"></p>
           <form id="controls" autocomplete="off"></form>
 
-          <div id="stroke-tools" hidden>
-            <h3>Drawing tools</h3>
-            <p class="hint">Draw right on the picture →</p>
-            <div class="tool-row">
-              <button type="button" class="button selected" data-stroke-kind="line">✏️ Pen</button>
-              <button type="button" class="button" data-stroke-kind="dot">🔆 Glow</button>
-            </div>
-            <label class="control">
-              <span class="control-label">Color</span>
-              <input type="color" id="stroke-color" value="#ffffff" />
-            </label>
-            <label class="control">
-              <span class="control-label">Size</span>
-              <span class="range-wrap"><input type="range" id="stroke-width" min="1" max="80" value="6" /></span>
-            </label>
-            <label class="control">
-              <span class="control-label">Strength</span>
-              <span class="range-wrap"><input type="range" id="stroke-intensity" min="10" max="200" value="120" /></span>
-            </label>
-            <div class="tool-row">
-              <button type="button" class="button" id="stroke-undo">↩ Undo</button>
-              <button type="button" class="button" id="stroke-clear">🗑 Clear</button>
-            </div>
-          </div>
         </section>
 
         <section id="panel-mix" hidden>
@@ -88,11 +64,38 @@
             </select>
           </label>
           <p class="hint">
-            Suns and doodles can only be the base layer — JPEG&nbsp;XL draws
-            splines on the first frame of a stack. The quilt sits this one out
-            (its block grid applies to the whole file).
+            Pick <strong>✏️ My Doodle</strong> as the base to draw right on
+            your mix. Suns and doodles can only be the base layer —
+            JPEG&nbsp;XL draws splines on the first frame of a stack. The
+            quilt sits this one out (its block grid applies to the whole
+            file).
           </p>
         </section>
+
+        <div id="stroke-tools" hidden>
+          <h3>Drawing tools</h3>
+          <p class="hint">Draw right on the picture →</p>
+          <div class="tool-row">
+            <button type="button" class="button selected" data-stroke-kind="line">✏️ Pen</button>
+            <button type="button" class="button" data-stroke-kind="dot">🔆 Glow</button>
+          </div>
+          <label class="control">
+            <span class="control-label">Color</span>
+            <input type="color" id="stroke-color" value="#ffffff" />
+          </label>
+          <label class="control">
+            <span class="control-label">Size</span>
+            <span class="range-wrap"><input type="range" id="stroke-width" min="1" max="80" value="6" /></span>
+          </label>
+          <label class="control">
+            <span class="control-label">Strength</span>
+            <span class="range-wrap"><input type="range" id="stroke-intensity" min="10" max="200" value="120" /></span>
+          </label>
+          <div class="tool-row">
+            <button type="button" class="button" id="stroke-undo">↩ Undo</button>
+            <button type="button" class="button" id="stroke-clear">🗑 Clear</button>
+          </div>
+        </div>
 
         <section id="panel-code" hidden>
           <p class="hint">

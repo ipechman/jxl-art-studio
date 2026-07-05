@@ -175,6 +175,7 @@ main {
   border-right: 1px solid var(--border);
   background: var(--bg-raised);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -386,8 +387,9 @@ main {
 
 .mix-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px 12px;
+  min-width: 0;
 }
 
 .mix-ctl {
@@ -396,14 +398,19 @@ main {
   gap: 6px;
   font-size: 0.75rem;
   color: var(--text-dim);
+  /* grid items default to min-width auto; without this the range inputs'
+     intrinsic width pushes the column past the sidebar, under the stage */
+  min-width: 0;
 }
 
 .mix-ctl span {
-  min-width: 46px;
+  min-width: 42px;
+  flex-shrink: 0;
 }
 
 .mix-ctl input[type="range"] {
   flex: 1;
+  width: 100%;
   min-width: 0;
   accent-color: var(--accent-strong);
 }

@@ -44,6 +44,8 @@ export interface ShareState {
   strokes?: Stroke[];
   layers?: MixLayer[];
   rotate?: number;
+  /** Live doodle backing a mix's "My Doodle" base layer. */
+  doodle?: { v: ParamValues; s: Stroke[] };
 }
 
 export async function buildHash(state: ShareState): Promise<string> {
@@ -54,7 +56,11 @@ export async function buildHash(state: ShareState): Promise<string> {
     parts.push(`p=${b64urlEncode(await deflateRaw(payload))}`);
   } else if (state.mode === "mix" && state.layers?.length) {
     parts.push("m=1");
-    const payload = JSON.stringify({ l: state.layers, r: state.rotate ?? 0 });
+    const payload = JSON.stringify({
+      l: state.layers,
+      r: state.rotate ?? 0,
+      d: state.doodle,
+    });
     parts.push(`p=${b64urlEncode(await deflateRaw(payload))}`);
   }
   return "#" + parts.join("&");
@@ -72,8 +78,9 @@ export async function parseHash(hash: string): Promise<ShareState | null> {
       const payload = JSON.parse(await inflateRaw(b64urlDecode(p))) as {
         l: MixLayer[];
         r?: number;
+        d?: { v: ParamValues; s: Stroke[] };
       };
-      return { mode: "mix", code, layers: payload.l, rotate: payload.r };
+      return { mode: "mix", code, layers: payload.l, rotate: payload.r, doodle: payload.d };
     }
     const recipeId = params.get("r") ?? undefined;
     if (recipeId && p) {

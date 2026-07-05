@@ -12,6 +12,7 @@ import { initGallery } from "./gallery.ts";
 import { toast } from "./toast.ts";
 import { PRESETS, type MixLayer, type Preset } from "../presets.ts";
 import {
+  DOODLE_LAYER_ID,
   LAYER_DEFAULTS,
   defaultMixState,
   generateMix,
@@ -94,6 +95,11 @@ export class App {
       }
       if (shared?.mode === "mix" && shared.layers) {
         this.mix = sanitizeMixState({ layers: shared.layers, rotate: shared.rotate });
+        if (shared.doodle) {
+          const dr = recipeById("doodle")!;
+          this.values.set(dr.id, { ...defaultsOf(dr), ...shared.doodle.v });
+          this.strokes = shared.doodle.s ?? [];
+        }
         this.enterMixMode();
         return;
       }
@@ -119,14 +125,32 @@ export class App {
     return v;
   }
 
+  private liveStrokes(): Stroke[] {
+    return this.pendingStroke ? [...this.strokes, this.pendingStroke] : this.strokes;
+  }
+
+  private mixBaseIsDoodle(): boolean {
+    return this.mix.layers[0]?.presetId === DOODLE_LAYER_ID;
+  }
+
+  private updateDrawMode() {
+    const drawing =
+      (this.mode === "builder" && Boolean(this.recipe.usesStrokes)) ||
+      (this.mode === "mix" && this.mixBaseIsDoodle());
+    $("stroke-tools").hidden = !drawing;
+    this.preview.drawMode = drawing;
+    this.preview.setDrawCursor(drawing);
+  }
+
   private regenerate() {
     if (this.mode === "mix") {
-      this.code = generateMix(this.mix);
+      const doodle = recipeById("doodle")!;
+      this.code = generateMix(this.mix, {
+        values: this.valuesFor(doodle),
+        strokes: this.liveStrokes(),
+      });
     } else {
-      const strokes = this.pendingStroke
-        ? [...this.strokes, this.pendingStroke]
-        : this.strokes;
-      this.code = this.recipe.generate(this.valuesFor(this.recipe), strokes);
+      this.code = this.recipe.generate(this.valuesFor(this.recipe), this.liveStrokes());
     }
     ($("code-editor") as HTMLTextAreaElement).value = this.code;
   }
@@ -177,6 +201,7 @@ export class App {
   }
 
   private shareState() {
+    const doodle = recipeById("doodle")!;
     return {
       mode: this.mode,
       code: this.lastGoodCode || this.code,
@@ -185,6 +210,9 @@ export class App {
       strokes: this.strokes,
       layers: this.mix.layers,
       rotate: this.mix.rotate,
+      doodle: this.mixBaseIsDoodle()
+        ? { v: this.valuesFor(doodle), s: this.strokes }
+        : undefined,
     };
   }
 
@@ -226,10 +254,7 @@ export class App {
       this.regenerate();
       this.refresh();
     });
-    const usesStrokes = Boolean(r.usesStrokes);
-    $("stroke-tools").hidden = !usesStrokes;
-    this.preview.drawMode = usesStrokes;
-    this.preview.setDrawCursor(usesStrokes);
+    this.updateDrawMode();
     this.regenerate();
     this.refresh(0);
   }
@@ -242,9 +267,7 @@ export class App {
     document
       .querySelectorAll<HTMLButtonElement>(".tab")
       .forEach((b) => b.classList.toggle("selected", b.dataset.tab === mode));
-    const drawing = mode === "builder" && Boolean(this.recipe.usesStrokes);
-    this.preview.drawMode = drawing;
-    this.preview.setDrawCursor(drawing);
+    this.updateDrawMode();
   }
 
   private wireTabs() {
@@ -277,6 +300,7 @@ export class App {
     const layers = this.mix.layers;
     const update = (rebuild = false) => {
       if (rebuild) this.rebuildMixUI();
+      this.updateDrawMode(); // the base may have become (or stopped being) a doodle
       this.regenerate();
       this.refresh();
     };

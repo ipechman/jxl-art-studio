@@ -13,7 +13,21 @@
  */
 import { PRESETS, type MixLayer, type Preset } from "./presets.ts";
 import { recipeById } from "./recipes/index.ts";
-import { defaultsOf, type LayerCtx } from "./recipes/types.ts";
+import {
+  defaultsOf,
+  type LayerCtx,
+  type ParamValues,
+  type Stroke,
+} from "./recipes/types.ts";
+
+/** Virtual base preset backed by the user's live doodle (drawn strokes). */
+export const DOODLE_LAYER_ID = "__doodle__";
+
+/** The app's current doodle state, threaded into generateMix. */
+export interface LiveDoodle {
+  values: ParamValues;
+  strokes: Stroke[];
+}
 
 export const MIX_SIZE = 512;
 const MAX_LAYERS = 4;
@@ -52,13 +66,22 @@ export function layerWindowable(l: MixLayer): boolean {
 }
 
 export function mixablePresets(role: "base" | "overlay"): Preset[] {
-  return PRESETS.filter((p) => {
+  const list = PRESETS.filter((p) => {
     if (p.mode !== "builder") return false;
     const r = recipeById(p.recipeId!);
     if (!r?.layer) return false;
     if (role === "overlay" && SPLINE_RECIPES.has(r.id)) return false;
     return true;
   });
+  if (role === "base") {
+    list.unshift({
+      id: DOODLE_LAYER_ID,
+      name: "✏️ My Doodle (draw on it!)",
+      mode: "builder",
+      recipeId: "doodle",
+    });
+  }
+  return list;
 }
 
 export function defaultMixState(): MixState {
@@ -161,12 +184,22 @@ function rectMask(
   return expr;
 }
 
-export function generateMix(state: MixState): string {
+export function generateMix(state: MixState, live?: LiveDoodle): string {
   const { layers, rotate } = state;
   const parts: string[] = [];
   let baseRct: number | undefined;
   layers.forEach((l, i) => {
-    const preset = PRESETS.find((p) => p.id === l.presetId);
+    const preset: Preset | undefined =
+      l.presetId === DOODLE_LAYER_ID
+        ? {
+            id: DOODLE_LAYER_ID,
+            name: "My Doodle",
+            mode: "builder",
+            recipeId: "doodle",
+            values: live?.values,
+            strokes: live?.strokes ?? [],
+          }
+        : PRESETS.find((p) => p.id === l.presetId);
     const recipe = preset && recipeById(preset.recipeId!);
     if (!preset || !recipe?.layer) return;
     // Plasma's unclamped Weighted predictor explodes when it reads the 65535
