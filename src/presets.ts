@@ -13,6 +13,8 @@ export interface MixLayer {
   /** Window size 10..100 % of the canvas. */
   w: number;
   h: number;
+  /** Per-layer recipe parameter overrides (fine-tuning on top of the preset). */
+  values?: ParamValues;
 }
 
 export interface Preset {

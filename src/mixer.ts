@@ -97,22 +97,31 @@ export function defaultMixState(): MixState {
 export function randomMixState(): MixState {
   const pickFrom = (arr: Preset[]) => arr[Math.floor(Math.random() * arr.length)];
   const rnd = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1));
+  const maybeRandomValues = (presetId: string) => {
+    if (Math.random() > 0.35) return undefined;
+    const preset = PRESETS.find((p) => p.id === presetId);
+    const recipe = preset && recipeById(preset.recipeId!);
+    return recipe?.randomize();
+  };
+  const basePreset = pickFrom(mixablePresets("base").filter((p) => p.id !== DOODLE_LAYER_ID));
   const layers: MixLayer[] = [
-    { ...LAYER_DEFAULTS, presetId: pickFrom(mixablePresets("base")).id },
+    { ...LAYER_DEFAULTS, presetId: basePreset.id, values: maybeRandomValues(basePreset.id) },
   ];
   const n = 1 + Math.floor(Math.random() * 2);
   for (let i = 0; i < n; i++) {
     const roll = Math.random();
     const blend = roll < 0.5 ? "add" : roll < 0.85 ? "normal" : "mul";
     const windowed = Math.random() < 0.45;
+    const presetId = pickFrom(mixablePresets("overlay")).id;
     layers.push({
-      presetId: pickFrom(mixablePresets("overlay")).id,
+      presetId,
       blend,
       opacity: blend === "mul" ? 100 : rnd(35, 100),
       w: windowed ? rnd(30, 80) : 100,
       h: windowed ? rnd(30, 80) : 100,
       x: rnd(0, 100),
       y: rnd(0, 100),
+      values: maybeRandomValues(presetId),
     });
   }
   return { layers, rotate: Math.random() < 0.2 ? rnd(1, 3) : 0 };
@@ -148,6 +157,10 @@ export function sanitizeMixState(input: {
         y: clamp(l.y, 0, 100, 50),
         w: clamp(l.w, 10, 100, 100),
         h: clamp(l.h, 10, 100, 100),
+        values:
+          l.values && typeof l.values === "object" && !Array.isArray(l.values)
+            ? l.values
+            : undefined,
       };
     });
   return {
@@ -220,7 +233,7 @@ export function generateMix(state: MixState, live?: LiveDoodle): string {
       baseRct,
     };
     const lp = recipe.layer(
-      { ...defaultsOf(recipe), ...preset.values },
+      { ...defaultsOf(recipe), ...preset.values, ...l.values },
       preset.strokes ?? [],
       ctx,
     );
