@@ -45,6 +45,9 @@ recipes scale their constants ×257 to match). Per layer you control:
   (Positioned sub-frames via `FramePos` crash this libjxl build, so windows
   are done in-tree.)
 - **Reorder**: move layers up and down the stack.
+- **Fine-tune**: every layer exposes its recipe's full controls (mountain
+  peaks, stamp colors, doodle backgrounds…) as per-layer overrides on top of
+  the picked starter, carried in share links.
 
 Whole-artwork **rotation** (0/90/180/270°) uses the `Orientation` header —
 per-layer rotation doesn't exist in JPEG XL, since prediction runs in raster

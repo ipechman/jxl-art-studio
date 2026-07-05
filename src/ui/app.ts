@@ -317,6 +317,14 @@ export class App {
     this.refresh(0);
   }
 
+  /** Resolve a mix layer's preset, including the virtual "My Doodle" one. */
+  private mixPresetFor(presetId: string): Preset | undefined {
+    if (presetId === DOODLE_LAYER_ID) {
+      return { id: DOODLE_LAYER_ID, name: "My Doodle", mode: "builder", recipeId: "doodle" };
+    }
+    return PRESETS.find((p) => p.id === presetId);
+  }
+
   private rebuildMixUI() {
     const container = $("mix-layers");
     container.innerHTML = "";
@@ -328,6 +336,54 @@ export class App {
       this.refresh();
     };
 
+    const makeSlider = (
+      parent: HTMLElement,
+      name: string,
+      min: number,
+      max: number,
+      value: number,
+      onInput: (v: number) => void,
+      title = "",
+      enabled = true,
+    ) => {
+      const wrap = document.createElement("label");
+      wrap.className = "mix-ctl";
+      wrap.title = title;
+      const span = document.createElement("span");
+      span.textContent = name;
+      const input = document.createElement("input");
+      input.type = "range";
+      input.min = String(min);
+      input.max = String(max);
+      input.value = String(value);
+      input.disabled = !enabled;
+      const out = document.createElement("output");
+      out.textContent = String(value);
+      input.addEventListener("input", () => {
+        out.textContent = input.value;
+        onInput(Number(input.value));
+      });
+      wrap.append(span, input, out);
+      parent.appendChild(wrap);
+    };
+
+    const makeSection = (
+      parent: HTMLElement,
+      title: string,
+      open = false,
+    ): HTMLDivElement => {
+      const details = document.createElement("details");
+      details.className = "mix-section";
+      details.open = open;
+      const summary = document.createElement("summary");
+      summary.textContent = title;
+      const body = document.createElement("div");
+      body.className = "mix-section-body";
+      details.append(summary, body);
+      parent.appendChild(details);
+      return body;
+    };
+
     layers.forEach((layer, i) => {
       const card = document.createElement("div");
       card.className = "mix-card";
@@ -336,7 +392,8 @@ export class App {
       row.className = "mix-row";
       const label = document.createElement("span");
       label.className = "mix-label";
-      label.textContent = i === 0 ? "Base" : `Layer ${i + 1}`;
+      label.textContent = i === 0 ? "Base" : `${i + 1}`;
+      label.title = i === 0 ? "The bottom layer of the stack" : `Layer ${i + 1}`;
       row.appendChild(label);
 
       const presetSel = document.createElement("select");
@@ -349,7 +406,8 @@ export class App {
       presetSel.value = layer.presetId;
       presetSel.addEventListener("change", () => {
         layer.presetId = presetSel.value;
-        update();
+        layer.values = undefined; // fresh start from the newly picked preset
+        update(true);
       });
       row.appendChild(presetSel);
 
@@ -389,6 +447,9 @@ export class App {
       }
       card.appendChild(row);
 
+      const preset = this.mixPresetFor(layer.presetId);
+      const recipe = preset && recipeById(preset.recipeId!);
+
       if (i > 0) {
         const grid = document.createElement("div");
         grid.className = "mix-grid";
@@ -415,59 +476,58 @@ export class App {
         blendWrap.appendChild(blendSel);
         grid.appendChild(blendWrap);
 
-        const slider = (
-          name: string,
-          min: number,
-          max: number,
-          value: number,
-          onInput: (v: number) => void,
-          title = "",
-          enabled = true,
-        ) => {
-          const wrap = document.createElement("label");
-          wrap.className = "mix-ctl";
-          wrap.title = title;
-          const span = document.createElement("span");
-          span.textContent = name;
-          const input = document.createElement("input");
-          input.type = "range";
-          input.min = String(min);
-          input.max = String(max);
-          input.value = String(value);
-          input.disabled = !enabled;
-          input.addEventListener("input", () => onInput(Number(input.value)));
-          wrap.append(span, input);
-          grid.appendChild(wrap);
-        };
-
         if (layer.blend !== "mul") {
-          slider("Opacity", 5, 100, layer.opacity, (v) => {
+          makeSlider(grid, "Opacity", 5, 100, layer.opacity, (v) => {
             layer.opacity = v;
             update();
           });
         }
+        card.appendChild(grid);
+
         const windowable = layerWindowable(layer);
         const windowTitle = windowable
           ? ""
           : "Plasma can't be windowed in Shade mode (its predictor destabilizes at the window edge)";
-        slider("Width", 10, 100, layer.w, (v) => {
+        const placement = makeSection(card, "📐 Size & position");
+        makeSlider(placement, "Width", 10, 100, layer.w, (v) => {
           layer.w = v;
           update();
         }, windowTitle || "How much of the canvas this layer's window covers", windowable);
-        slider("Height", 10, 100, layer.h, (v) => {
+        makeSlider(placement, "Height", 10, 100, layer.h, (v) => {
           layer.h = v;
           update();
         }, windowTitle, windowable);
-        slider("Pos ↔", 0, 100, layer.x, (v) => {
+        makeSlider(placement, "Pos ↔", 0, 100, layer.x, (v) => {
           layer.x = v;
           update();
         }, windowTitle || "Slides the window left–right (when smaller than the canvas)", windowable);
-        slider("Pos ↕", 0, 100, layer.y, (v) => {
+        makeSlider(placement, "Pos ↕", 0, 100, layer.y, (v) => {
           layer.y = v;
           update();
         }, windowTitle, windowable);
-        card.appendChild(grid);
       }
+
+      // Fine-tuning: the layer's full recipe controls, editing per-layer
+      // overrides on top of the picked preset.
+      if (recipe) {
+        const fine = makeSection(
+          card,
+          `${recipe.emoji} ${recipe.name} settings`,
+        );
+        const effective = {
+          ...defaultsOf(recipe),
+          ...(layer.presetId === DOODLE_LAYER_ID
+            ? this.valuesFor(recipe)
+            : preset!.values),
+          ...layer.values,
+        };
+        renderControls(fine, recipe, effective, (pid, val) => {
+          layer.values = { ...(layer.values ?? {}), [pid]: val };
+          this.regenerate();
+          this.refresh();
+        });
+      }
+
       container.appendChild(card);
     });
 
