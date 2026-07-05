@@ -42,6 +42,16 @@ export interface LayerCtx {
    * everything outside it. Defaults to the full canvas.
    */
   region?: { x: number; y: number; w: number; h: number };
+  /** Alpha sample value meaning "fully visible at this layer's opacity". */
+  alphaOn?: number;
+  /** Whether this layer is the base of the mix or an overlay. */
+  role?: "base" | "overlay";
+  /**
+   * The base layer's RCT. Frames blend in the base's transform space, so
+   * color-picker overlays must emit matching-space values (handled for
+   * YCoCg, RCT 6) or their colors shift.
+   */
+  baseRct?: number;
 }
 
 /** A recipe rendered as a mixable layer. */
@@ -50,6 +60,12 @@ export interface LayerParts {
   header?: string;
   /** Spline blocks — only rendered on the base layer of a mix. */
   splines?: string;
+  /**
+   * Optional alpha-channel tree (values: ctx.alphaOn = visible, 0 = not).
+   * Lets a recipe shape its own silhouette instead of the rectangular
+   * window — e.g. logo stamps. Ignored for "mul" layers (kMul has no alpha).
+   */
+  alpha?: string;
   tree: string;
 }
 
@@ -62,6 +78,8 @@ export interface Recipe {
   params: ParamDef[];
   /** Whether this recipe uses drawn strokes (shows draw tools on the preview). */
   usesStrokes?: boolean;
+  /** Layers carry their silhouette in the alpha channel (no Shade blending). */
+  alphaDriven?: boolean;
   generate(values: ParamValues, strokes: Stroke[]): string;
   /**
    * Emit this recipe as one layer of a multi-frame mix. Recipes without
