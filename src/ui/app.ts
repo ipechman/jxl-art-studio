@@ -365,6 +365,7 @@ export class App {
       });
       wrap.append(span, input, out);
       parent.appendChild(wrap);
+      return { input, wrap };
     };
 
     const makeSection = (
@@ -488,23 +489,41 @@ export class App {
         const windowTitle = windowable
           ? ""
           : "Plasma can't be windowed in Shade mode (its predictor destabilizes at the window edge)";
+        const fullTitle = "At 100% size there is nowhere to slide — shrink Width/Height first";
         const placement = makeSection(card, "📐 Size & position");
+
+        // Pos sliders only have room to slide when the window is smaller
+        // than the canvas; grey them out (live) instead of doing nothing.
+        let posX: { input: HTMLInputElement; wrap: HTMLElement };
+        let posY: { input: HTMLInputElement; wrap: HTMLElement };
+        const syncPos = () => {
+          const xOn = windowable && layer.w < 100;
+          const yOn = windowable && layer.h < 100;
+          posX.input.disabled = !xOn;
+          posX.wrap.title = xOn ? "Slides the window left–right" : windowTitle || fullTitle;
+          posY.input.disabled = !yOn;
+          posY.wrap.title = yOn ? "Slides the window up–down" : windowTitle || fullTitle;
+        };
+
         makeSlider(placement, "Width", 10, 100, layer.w, (v) => {
           layer.w = v;
+          syncPos();
           update();
         }, windowTitle || "How much of the canvas this layer's window covers", windowable);
         makeSlider(placement, "Height", 10, 100, layer.h, (v) => {
           layer.h = v;
+          syncPos();
           update();
         }, windowTitle, windowable);
-        makeSlider(placement, "Pos ↔", 0, 100, layer.x, (v) => {
+        posX = makeSlider(placement, "Pos ↔", 0, 100, layer.x, (v) => {
           layer.x = v;
           update();
-        }, windowTitle || "Slides the window left–right (when smaller than the canvas)", windowable);
-        makeSlider(placement, "Pos ↕", 0, 100, layer.y, (v) => {
+        });
+        posY = makeSlider(placement, "Pos ↕", 0, 100, layer.y, (v) => {
           layer.y = v;
           update();
-        }, windowTitle, windowable);
+        });
+        syncPos();
       }
 
       // Fine-tuning: the layer's full recipe controls, editing per-layer

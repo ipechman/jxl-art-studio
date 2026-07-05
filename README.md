@@ -19,6 +19,7 @@ The **Easy studio** tab offers recipes with sliders and color pickers:
 | 🌅 Sunset & Sun | smooth sky gradient + a glowing spline sun |
 | 🏔 Misty Landscape | fog-textured sky, jagged mountain silhouettes, sea and sun — luma turbulence over smooth YCoCg chroma, noise bootstrapped from an invisible `HiddenChannel` |
 | ✖️ Logo Stamp | crosses, chevrons, triangles, diamonds — diagonal strokes drawn by `NE`/`NW` propagation (the gallery's JXL-logo technique); floats over any mix via its alpha-channel silhouette |
+| 🌫 Mist | drifting fog — standalone a dreamy textured sky; as a mix layer the turbulence lives in the alpha channel, making real translucent haze over anything |
 | 🌈 Smooth Gradient | two-color blends (uses a 16-bit-depth trick for banding-free ramps) |
 | ✏️ Doodle | draw on the picture; strokes become real JPEG XL splines |
 | 🔺 Triangle Fractals | elementary cellular automata (rule 0–255), two colors |

@@ -44,6 +44,7 @@ export const automaton: Recipe = {
       ],
       default: "1",
     },
+    { kind: "range", id: "seedX", label: "Seed position ←→", min: 0, max: 100, default: 50 },
   ],
   generate(v: ParamValues) {
     const [w, h] = String(v.size).split("x").map(Number);
@@ -51,11 +52,12 @@ export const automaton: Recipe = {
     const fg = hexToRgb(String(v.fg));
     const bg = hexToRgb(String(v.bg));
     const up = Number(v.zoom);
+    const cx = Math.max(1, Math.min(w - 2, Math.round((w * Number(v.seedX ?? 50)) / 100)));
     return `Width ${w} Height ${h}${up > 1 ? ` Upsample ${up}` : ""}
 ${perChannel(
-  caChannelTree(rule, fg[0], bg[0], w),
-  caChannelTree(rule, fg[1], bg[1], w),
-  caChannelTree(rule, fg[2], bg[2], w),
+  caChannelTree(rule, fg[0], bg[0], w, cx),
+  caChannelTree(rule, fg[1], bg[1], w, cx),
+  caChannelTree(rule, fg[2], bg[2], w, cx),
 )}`;
   },
   layer(v, _strokes, ctx) {
@@ -63,8 +65,10 @@ ${perChannel(
     const fg = channelColors(hexToRgb(String(v.fg)), ctx.baseRct);
     const bg = channelColors(hexToRgb(String(v.bg)), ctx.baseRct);
     const r = ctx.region ?? { x: 0, y: 0, w: ctx.width, h: ctx.height };
-    // seed at the top-center of the visible window so the pattern moves with it
-    const cx = r.x + Math.floor(r.w / 2);
+    // seed inside the visible window at the chosen fraction — this is how the
+    // pattern moves even when the window covers the whole canvas
+    const frac = Number(v.seedX ?? 50) / 100;
+    const cx = r.x + Math.max(1, Math.min(r.w - 2, Math.round(r.w * frac)));
     const chan = (i: number) =>
       caChannelTree(rule, fg.vals[i], bg.vals[i], ctx.width, cx, r.y);
     return { header: fg.header, tree: perChannel(chan(0), chan(1), chan(2)) };
@@ -77,6 +81,7 @@ ${perChannel(
       bg: randHex(rnd),
       size: "513x257",
       zoom: "1",
+      seedX: rnd() < 0.5 ? 50 : Math.floor(rnd() * 101),
     };
   },
 };
