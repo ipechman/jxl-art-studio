@@ -69,6 +69,20 @@ export const PRESETS: Preset[] = [
     },
   },
   {
+    id: "morning-mist",
+    name: "Morning Mist",
+    mode: "builder",
+    recipeId: "mist",
+    values: {
+      color: "#dfe6f2",
+      density: 55,
+      billow: 60,
+      texture: "190",
+      top: "#5a74c8",
+      bottom: "#e8b28c",
+    },
+  },
+  {
     id: "turquoise-x",
     name: "Turquoise X",
     mode: "builder",

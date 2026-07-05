@@ -9,6 +9,7 @@ import { warp } from "./warp.ts";
 import { quilt } from "./quilt.ts";
 import { doodle } from "./doodle.ts";
 import { stamp } from "./shapes.ts";
+import { mist } from "./mist.ts";
 
 export const RECIPES: Recipe[] = [
   sunset,
@@ -16,6 +17,7 @@ export const RECIPES: Recipe[] = [
   gradient,
   doodle,
   stamp,
+  mist,
   automaton,
   stripes,
   plasma,
