@@ -160,6 +160,29 @@ export class App {
     this.encodeTimer = window.setTimeout(() => this.encodeNow(), debounceMs);
   }
 
+  private encodeBusy = false;
+  private encodeDirty = false;
+
+  /**
+   * Live update while drawing. `refresh()` is a debounce, which starves
+   * during a continuous drag (every move resets the timer) — this instead
+   * encodes immediately and coalesces whatever arrives while it's busy.
+   */
+  private refreshLive() {
+    if (this.encodeBusy) {
+      this.encodeDirty = true;
+      return;
+    }
+    this.encodeBusy = true;
+    this.encodeNow().finally(() => {
+      this.encodeBusy = false;
+      if (this.encodeDirty) {
+        this.encodeDirty = false;
+        this.refreshLive();
+      }
+    });
+  }
+
   private async encodeNow() {
     const seq = ++this.seq;
     const code = this.code;
@@ -573,10 +596,9 @@ export class App {
   private handleDraw(phase: "start" | "move" | "end", x: number, y: number) {
     if (phase === "start") {
       this.pendingStroke = { ...this.tool, points: [[x, y]] };
-      if (this.tool.kind === "dot") {
-        this.regenerate();
-        this.refresh(30);
-      }
+      this.showOverlay(x, y);
+      this.regenerate();
+      this.refreshLive();
       return;
     }
     if (!this.pendingStroke) return;
@@ -586,10 +608,11 @@ export class App {
       } else {
         const pts = this.pendingStroke.points;
         const [lx, ly] = pts[pts.length - 1];
-        if (Math.hypot(x - lx, y - ly) >= 14) pts.push([x, y]);
+        if (Math.hypot(x - lx, y - ly) >= 10) pts.push([x, y]);
       }
+      this.showOverlay(x, y);
       this.regenerate();
-      this.refresh(60);
+      this.refreshLive();
       return;
     }
     // end
@@ -601,8 +624,22 @@ export class App {
     }
     this.strokes.push(this.pendingStroke);
     this.pendingStroke = null;
+    // keep the instant overlay up until the real spline render lands
+    this.preview.fadeOverlayOnNextPaint();
     this.regenerate();
     this.refresh(0);
+  }
+
+  /** Approximate stroke drawn instantly on the canvas while dragging. */
+  private showOverlay(x: number, y: number) {
+    const s = this.pendingStroke;
+    if (!s) return;
+    this.preview.setOverlay({
+      kind: s.kind,
+      color: s.color,
+      width: s.width,
+      points: s.kind === "dot" ? [[x, y]] : [...s.points, [x, y]],
+    });
   }
 
   // --- code editor -------------------------------------------------------
