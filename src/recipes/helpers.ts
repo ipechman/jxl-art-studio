@@ -19,6 +19,50 @@ export const q16 = (v8: number) => Math.round(v8 * 257);
 export const perChannel = (r: string, g: string, b: string) =>
   `if c > 0\n if c > 1\n ${b}\n ${g}\n ${r}`;
 
+/** RCT 6 (YCoCg) forward transform in 16-bit sample units — matches the
+ * decoder's inverse exactly (verified pixel-perfect in tools/batch6.mjs). */
+export function rgbToYCoCg(rgb: RGB): [number, number, number] {
+  const r = rgb[0] * 257;
+  const g = rgb[1] * 257;
+  const b = rgb[2] * 257;
+  const co = r - b;
+  const tmp = b + (co >> 1);
+  const cg = g - tmp;
+  const y = tmp + (cg >> 1);
+  return [y, co, cg];
+}
+
+/**
+ * Channel sample values (16-bit) for a picked color inside a mix layer.
+ * Frames blend in the base's RCT space: when the base is YCoCg (RCT 6) the
+ * overlay must speak YCoCg too and declare RCT 6 on its own frame.
+ */
+export function channelColors(
+  rgb: RGB,
+  baseRct: number | undefined,
+): { vals: [number, number, number]; header: string } {
+  if (baseRct === 6) {
+    return { vals: rgbToYCoCg(rgb), header: "RCT 6" };
+  }
+  return { vals: [rgb[0] * 257, rgb[1] * 257, rgb[2] * 257], header: "" };
+}
+
+/**
+ * Balanced decision tree over x-intervals: `leaves[i]` covers
+ * x in (bounds[i-1], bounds[i]], `leaves[n]` covers x > bounds[n-1].
+ */
+export function intervalTree(bounds: number[], leaves: string[]): string {
+  if (bounds.length === 0) return leaves[0];
+  const mid = Math.floor(bounds.length / 2);
+  const left = intervalTree(bounds.slice(0, mid), leaves.slice(0, mid + 1));
+  const right = intervalTree(bounds.slice(mid + 1), leaves.slice(mid + 1));
+  return `if x > ${bounds[mid]}\n ${indentLines(right, 1)}\n ${indentLines(left, 1)}`;
+}
+
+/** Re-indents a multi-line subtree for embedding (cosmetic only). */
+export const indentLines = (s: string, n: number) =>
+  s.split("\n").join("\n" + " ".repeat(n));
+
 /** Deterministic PRNG so seeds reproduce the same art. */
 export function mulberry32(seed: number) {
   let a = seed >>> 0;

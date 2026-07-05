@@ -19,7 +19,7 @@ export const MIX_SIZE = 512;
 const MAX_LAYERS = 4;
 
 /** Recipes whose layers carry splines — usable only as the base of a mix. */
-const SPLINE_RECIPES = new Set(["sunset", "doodle"]);
+const SPLINE_RECIPES = new Set(["sunset", "doodle", "landscape"]);
 
 export interface MixState {
   layers: MixLayer[];
@@ -108,17 +108,25 @@ export function sanitizeMixState(input: {
   const layers = (input.layers ?? [])
     .filter((l, i) => l.presetId && (i === 0 ? base : overlay).includes(l.presetId))
     .slice(0, MAX_LAYERS)
-    .map(
-      (l): MixLayer => ({
+    .map((l): MixLayer => {
+      let blend: MixLayer["blend"] =
+        l.blend === "mul" || l.blend === "normal" ? l.blend : "add";
+      // alpha-driven silhouettes (logo stamps) vanish under kMul, which
+      // ignores the alpha channel — snap those back to glow
+      const preset = PRESETS.find((p) => p.id === l.presetId);
+      if (blend === "mul" && preset && recipeById(preset.recipeId!)?.alphaDriven) {
+        blend = "add";
+      }
+      return {
         presetId: l.presetId!,
-        blend: l.blend === "mul" || l.blend === "normal" ? l.blend : "add",
+        blend,
         opacity: clamp(l.opacity, 5, 100, 100),
         x: clamp(l.x, 0, 100, 50),
         y: clamp(l.y, 0, 100, 50),
         w: clamp(l.w, 10, 100, 100),
         h: clamp(l.h, 10, 100, 100),
-      }),
-    );
+      };
+    });
   return {
     layers: layers.length ? layers : defaultMixState().layers,
     rotate: clamp(input.rotate, 0, 3, 0),
@@ -156,6 +164,7 @@ function rectMask(
 export function generateMix(state: MixState): string {
   const { layers, rotate } = state;
   const parts: string[] = [];
+  let baseRct: number | undefined;
   layers.forEach((l, i) => {
     const preset = PRESETS.find((p) => p.id === l.presetId);
     const recipe = preset && recipeById(preset.recipeId!);
@@ -167,21 +176,36 @@ export function generateMix(state: MixState): string {
       i === 0 || !windowable
         ? { x: 0, y: 0, w: MIX_SIZE, h: MIX_SIZE }
         : regionOf(l);
-    const ctx: LayerCtx = { width: MIX_SIZE, height: MIX_SIZE, scale: 257, region };
-    const { header, splines, tree } = recipe.layer(
+    const alpha = Math.round((65535 * l.opacity) / 100);
+    const ctx: LayerCtx = {
+      width: MIX_SIZE,
+      height: MIX_SIZE,
+      scale: 257,
+      region,
+      alphaOn: alpha,
+      role: i === 0 ? "base" : "overlay",
+      baseRct,
+    };
+    const lp = recipe.layer(
       { ...defaultsOf(recipe), ...preset.values },
       preset.strokes ?? [],
       ctx,
     );
+    const { header, splines, tree } = lp;
+    if (i === 0) {
+      baseRct = header ? Number(/RCT (\d+)/.exec(header)?.[1]) || undefined : undefined;
+    }
 
-    // The alpha channel (c == 3) carries opacity and the visibility window.
-    const alpha = Math.round((65535 * l.opacity) / 100);
+    // The alpha channel (c == 3) carries opacity and the visibility window —
+    // or the recipe's own silhouette (logo stamps).
     let framed: string;
     if (i === 0) {
       framed = `if c > 2\n - Set 65535\n ${tree}`;
     } else if (l.blend === "mul") {
       // kMul ignores alpha, so the window masks color with 65535 (identity)
       framed = `if c > 2\n - Set 65535\n ${rectMask(tree, "- Set 65535", region)}`;
+    } else if (lp.alpha) {
+      framed = `if c > 2\n ${rectMask(lp.alpha, "- Set 0", region)}\n ${tree}`;
     } else {
       framed = `if c > 2\n ${rectMask(`- Set ${alpha}`, "- Set 0", region)}\n ${tree}`;
     }
